@@ -64,7 +64,7 @@ def loss_function(cont_pred, logits_z1, logits_z2,
                   cont_target, z1_target, z2_target,
                   mean, logvar,
                   cont_mean, cont_scale, weight_z1=None, weight_z2=None,
-                  beta=10.0, lambda_neg=0.1, lambda_sum=0.1, lambda_ce=1.0):
+                  beta=1.0, lambda_neg=0, lambda_sum=0, lambda_ce=0):
     mse = nn.functional.mse_loss(cont_pred, cont_target, reduction='sum')
     kl = -0.5 * torch.sum(1 + logvar - mean.pow(2) - logvar.exp())
 
@@ -74,14 +74,15 @@ def loss_function(cont_pred, logits_z1, logits_z2,
 
     # Денормализация предсказаний и целевых значений (для штрафов)
     cont_pred_denorm = cont_pred * cont_scale.unsqueeze(0) + cont_mean.unsqueeze(0)
+    cont_target_denorm = cont_target * cont_scale.unsqueeze(0) + cont_mean.unsqueeze(0)
 
     A_pred = cont_pred_denorm[:, 0]
-    r1_pred = cont_pred_denorm[:, 1]
-    r2_pred = cont_pred_denorm[:, 2]
-    r_pred = cont_pred_denorm[:, 3]
-    r0_pred = cont_pred_denorm[:, 4]
-    h_pred = cont_pred_denorm[:, 5]
-    L_pred = cont_pred_denorm[:, 6]
+    r1_pred = torch.expm1(cont_pred_denorm[:, 1])
+    r2_pred = torch.expm1(cont_pred_denorm[:, 2])
+    r_pred = torch.expm1(cont_pred_denorm[:, 3])
+    r0_pred = torch.expm1(cont_pred_denorm[:, 4])
+    h_pred = torch.expm1(cont_pred_denorm[:, 5])
+    L_pred = torch.expm1(cont_pred_denorm[:, 6])
 
     # Штраф за отрицательные значения
     neg_penalty = (torch.relu(-A_pred) ** 2).sum() + \
@@ -95,5 +96,5 @@ def loss_function(cont_pred, logits_z1, logits_z2,
     # Штраф за нарушение r1 + r2 = A
     sum_penalty = torch.mean((r1_pred + r2_pred - A_pred)**2)
 
-    total_loss = mse + lambda_ce * (ce_z1 + ce_z2) + beta * kl + lambda_neg * neg_penalty + lambda_sum * sum_penalty
+    total_loss = 10*mse + beta * kl + lambda_ce * (ce_z1 + ce_z2) + lambda_neg * neg_penalty + lambda_sum * sum_penalty
     return total_loss, mse, ce_z1 + ce_z2, kl, neg_penalty, sum_penalty
