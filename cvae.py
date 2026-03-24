@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 
 class ConditionalVAE(nn.Module):
-    def __init__(self, geom_dim, hydro_dim, latent_dim=8, hidden_dim=64, num_classes=5):
+    def __init__(self, geom_dim, hydro_dim, latent_dim=8, hidden_dim=128, num_classes=5):
         super(ConditionalVAE, self).__init__()
         self.geom_dim = geom_dim
         self.hydro_dim = hydro_dim
@@ -32,7 +32,7 @@ class ConditionalVAE(nn.Module):
         )
 
         # Головы
-        self.cont_head = nn.Linear(hidden_dim, 7)          # A, r1, r2, r, r0, h, L
+        self.cont_head = nn.Linear(hidden_dim, 6)          # A, r1, r, r0, h, L
         self.z1_head = nn.Linear(hidden_dim, num_classes)
         self.z2_head = nn.Linear(hidden_dim, num_classes)
 
@@ -64,7 +64,7 @@ def loss_function(cont_pred, logits_z1, logits_z2,
                   cont_target, z1_target, z2_target,
                   mean, logvar,
                   cont_mean, cont_scale, weight_z1=None, weight_z2=None,
-                  beta=1.0, lambda_neg=0, lambda_sum=0, lambda_ce=0):
+                  beta=1.0, lambda_neg=0, lambda_sum=1, lambda_ce=0):
     mse = nn.functional.mse_loss(cont_pred, cont_target, reduction='sum')
     kl = -0.5 * torch.sum(1 + logvar - mean.pow(2) - logvar.exp())
 
@@ -78,11 +78,11 @@ def loss_function(cont_pred, logits_z1, logits_z2,
 
     A_pred = cont_pred_denorm[:, 0]
     r1_pred = torch.expm1(cont_pred_denorm[:, 1])
-    r2_pred = torch.expm1(cont_pred_denorm[:, 2])
-    r_pred = torch.expm1(cont_pred_denorm[:, 3])
-    r0_pred = torch.expm1(cont_pred_denorm[:, 4])
-    h_pred = torch.expm1(cont_pred_denorm[:, 5])
-    L_pred = torch.expm1(cont_pred_denorm[:, 6])
+    r2_pred = A_pred - r1_pred
+    r_pred = torch.expm1(cont_pred_denorm[:, 2])
+    r0_pred = torch.expm1(cont_pred_denorm[:, 3])
+    h_pred = torch.expm1(cont_pred_denorm[:, 4])
+    L_pred = torch.expm1(cont_pred_denorm[:, 5])
 
     # Штраф за отрицательные значения
     neg_penalty = (torch.relu(-A_pred) ** 2).sum() + \
@@ -96,5 +96,5 @@ def loss_function(cont_pred, logits_z1, logits_z2,
     # Штраф за нарушение r1 + r2 = A
     sum_penalty = torch.mean((r1_pred + r2_pred - A_pred)**2)
 
-    total_loss = 10*mse + beta * kl + lambda_ce * (ce_z1 + ce_z2) + lambda_neg * neg_penalty + lambda_sum * sum_penalty
+    total_loss = 10 * mse + beta * kl + lambda_ce * (ce_z1 + ce_z2) + lambda_neg * neg_penalty + lambda_sum * sum_penalty
     return total_loss, mse, ce_z1 + ce_z2, kl, neg_penalty, sum_penalty

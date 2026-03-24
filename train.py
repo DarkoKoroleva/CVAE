@@ -17,7 +17,7 @@ df['z2'] = df['z2'].astype(int)
 df.drop(['phi01', 'phi02'], axis=1, inplace=True, errors='ignore')
 
 # Признаки, которые будем логарифмировать (сильно скошенные)
-skewed_features = ['r1', 'r2', 'r', 'r0', 'h', 'L']
+skewed_features = ['r1', 'r', 'r0', 'h', 'L']
 for feat in skewed_features:
     df[feat + '_log'] = np.log1p(df[feat])  # log(1+x) для положительных x
 
@@ -81,16 +81,16 @@ y_val_scaled = scaler_hydro.transform(y_val)
 y_test_scaled = scaler_hydro.transform(y_test)
 
 # Сохраняем средние и масштабы для непрерывных признаков (первые 7)
-cont_mean = torch.FloatTensor(scaler_geom.mean_[:7])
-cont_scale = torch.FloatTensor(scaler_geom.scale_[:7])
+cont_mean = torch.FloatTensor(scaler_geom.mean_[:6])
+cont_scale = torch.FloatTensor(scaler_geom.scale_[:6])
 
 # Целевые для классификации z1, z2 (индексы 7,8 в X)
-z1_train = torch.LongTensor(X_train[:, 7].astype(int) - 4)
-z2_train = torch.LongTensor(X_train[:, 8].astype(int) - 4)
-z1_val = torch.LongTensor(X_val[:, 7].astype(int) - 4)
-z2_val = torch.LongTensor(X_val[:, 8].astype(int) - 4)
-z1_test = torch.LongTensor(X_test[:, 7].astype(int) - 4)
-z2_test = torch.LongTensor(X_test[:, 8].astype(int) - 4)
+z1_train = torch.LongTensor(X_train[:, 6].astype(int) - 4)
+z2_train = torch.LongTensor(X_train[:, 7].astype(int) - 4)
+z1_val = torch.LongTensor(X_val[:, 6].astype(int) - 4)
+z2_val = torch.LongTensor(X_val[:, 7].astype(int) - 4)
+z1_test = torch.LongTensor(X_test[:, 6].astype(int) - 4)
+z2_test = torch.LongTensor(X_test[:, 7].astype(int) - 4)
 
 # Создаём тензоры
 X_train_t = torch.FloatTensor(X_train_scaled)
@@ -117,13 +117,13 @@ test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)
 # weights_z2 = compute_class_weight('balanced', classes=classes_z2, y=z2_train.numpy())
 # class_weights_z2 = torch.FloatTensor(weights_z2)
 
-geom_dim = 9
+geom_dim = 8
 hydro_dim = 2
-latent_dim = 8
+latent_dim = 7
 model = ConditionalVAE(geom_dim, hydro_dim, latent_dim)
 optimizer = optim.Adam(model.parameters(), lr=1e-3)
 
-epochs = 35
+epochs = 50
 train_losses = []
 val_losses = []
 mse_losses = []
@@ -149,7 +149,7 @@ for epoch in range(epochs):
         geom, hydro, z1t, z2t = batch
         optimizer.zero_grad()
         cont_pred, logits_z1, logits_z2, mean, logvar = model(geom, hydro)
-        cont_target = geom[:, :7]  # первые 7 столбцов (A, r1, r2, r, r0, h, L)
+        cont_target = geom[:, :6]  # первые 6 столбцов (A, r1, r, r0, h, L)
         loss, mse, ce, kl, neg, sum_pen = loss_function(
             cont_pred, logits_z1, logits_z2,
             cont_target, z1t, z2t,
@@ -189,7 +189,7 @@ for epoch in range(epochs):
         for batch in val_loader:
             geom, hydro, z1t, z2t = batch
             cont_pred, logits_z1, logits_z2, mean, logvar = model(geom, hydro)
-            cont_target = geom[:, :7]
+            cont_target = geom[:, :6]
             loss, _, _, _, _, _ = loss_function(
                 cont_pred, logits_z1, logits_z2,
                 cont_target, z1t, z2t,
@@ -249,7 +249,7 @@ with torch.no_grad():
     for batch in test_loader:
         geom, hydro, z1t, z2t = batch
         cont_pred, logits_z1, logits_z2, mean, logvar = model(geom, hydro)
-        cont_target = geom[:, :7]
+        cont_target = geom[:, :6]
         loss, mse, ce, kl, neg, sum_pen = loss_function(
             cont_pred, logits_z1, logits_z2,
             cont_target, z1t, z2t,
@@ -290,20 +290,20 @@ with torch.no_grad():
                 print(f"\nПример {i + 1}:")
                 print(f"  Предсказано: A={cont_pred_denorm[i, 0].item():.2f}, "
                     f"r1={torch.expm1(cont_pred_denorm[i, 1]).item():.2f}, "
-                    f"r2={torch.expm1(cont_pred_denorm[i, 2]).item():.2f}, "
-                    f"r={torch.expm1(cont_pred_denorm[i, 3]).item():.2f}, "
-                    f"r0={torch.expm1(cont_pred_denorm[i, 4]).item():.2f}, "
-                    f"h={torch.expm1(cont_pred_denorm[i, 5]).item():.2f}, "
-                    f"L={torch.expm1(cont_pred_denorm[i, 6]).item():.2f}, "
+                    f"r2={cont_pred_denorm[i, 0].item() - torch.expm1(cont_pred_denorm[i, 1]).item():.2f}, "
+                    f"r={torch.expm1(cont_pred_denorm[i, 2]).item():.2f}, "
+                    f"r0={torch.expm1(cont_pred_denorm[i, 3]).item():.2f}, "
+                    f"h={torch.expm1(cont_pred_denorm[i, 4]).item():.2f}, "
+                    f"L={torch.expm1(cont_pred_denorm[i, 5]).item():.2f}, "
                     f"z1={pred_z1[i].item()}, z2={pred_z2[i].item()}")
                 print(
                     f"  Истинно:    A={cont_target_denorm[i, 0].item():.2f}, "
                     f"r1={torch.expm1(cont_target_denorm[i, 1]).item():.2f}, "
-                    f"r2={torch.expm1(cont_target_denorm[i, 2]).item():.2f}, "
-                    f"r={torch.expm1(cont_target_denorm[i, 3]).item():.2f}, "
-                    f"r0={torch.expm1(cont_target_denorm[i, 4]).item():.2f}," 
-                    f"h={torch.expm1(cont_target_denorm[i, 5]).item():.2f}, "
-                    f"L={torch.expm1(cont_target_denorm[i, 6]).item():.2f}, " 
+                    f"r2={cont_target_denorm[i, 0].item() - torch.expm1(cont_target_denorm[i, 1]).item():.2f}, "
+                    f"r={torch.expm1(cont_target_denorm[i, 2]).item():.2f}, "
+                    f"r0={torch.expm1(cont_target_denorm[i, 3]).item():.2f}," 
+                    f"h={torch.expm1(cont_target_denorm[i, 4]).item():.2f}, "
+                    f"L={torch.expm1(cont_target_denorm[i, 5]).item():.2f}, " 
                     f"z1={true_z1[i].item()}, z2={true_z2[i].item()}")
 
             examples_shown = True
@@ -319,23 +319,24 @@ all_cont_pred = np.concatenate(all_cont_pred, axis=0)
 all_cont_true = np.concatenate(all_cont_true, axis=0)
 
 # Преобразуем логарифмированные признаки (индексы 1-6) обратно
-for idx in range(1,7):
+for idx in range(1,6):
     all_cont_pred[:, idx] = np.expm1(all_cont_pred[:, idx])
     all_cont_true[:, idx] = np.expm1(all_cont_true[:, idx])
 
 # Вычисляем ошибки по каждому параметру
-param_names = ['A', 'r1', 'r2', 'r', 'r0', 'h', 'L']
+param_names = ['A', 'r1', 'r', 'r0', 'h', 'L']
 mae_per_param = np.mean(np.abs(all_cont_pred - all_cont_true), axis=0)
 rmse_per_param = np.sqrt(np.mean((all_cont_pred - all_cont_true)**2, axis=0))
+mape_per_param = np.mean(np.abs((all_cont_true - all_cont_pred) / (all_cont_true)), axis=0) * 100
 
 print("\nОшибки по непрерывным параметрам на тестовой выборке:")
 for i, name in enumerate(param_names):
-    print(f"{name}: MAE = {mae_per_param[i]:.3f}, RMSE = {rmse_per_param[i]:.3f}")
+    print(f"{name}: MAE = {mae_per_param[i]:.3f}, RMSE = {rmse_per_param[i]:.3f}, {name}: MAPE = {mape_per_param[i]:.2f}%")
 
 # Построение scatter plots
-fig, axes = plt.subplots(3, 3, figsize=(15, 15))
+fig, axes = plt.subplots(3, 3, figsize=(15, 10))
 axes = axes.flatten()
-for i in range(7):
+for i in range(6):
     ax = axes[i]
     ax.scatter(all_cont_true[:, i], all_cont_pred[:, i], alpha=0.3, s=10)
     min_val = min(all_cont_true[:, i].min(), all_cont_pred[:, i].min())
@@ -345,7 +346,7 @@ for i in range(7):
     ax.set_ylabel(f'Predicted {param_names[i]}')
     ax.set_title(f'{param_names[i]} (MAE={mae_per_param[i]:.2f})')
     ax.grid(True, alpha=0.3)
-for j in range(7, 9):
+for j in range(6, 9):
     axes[j].set_visible(False)
 plt.tight_layout()
 plt.show()
