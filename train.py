@@ -11,10 +11,9 @@ from cvae import ConditionalVAE, loss_function
 import matplotlib.pyplot as plt
 import pickle
 
-df = pd.read_csv('params.csv', index_col=0)
+df = pd.read_csv('screws_dataset.csv', index_col=0)
 df['z1'] = df['z1'].astype(int)
 df['z2'] = df['z2'].astype(int)
-df.drop(['phi01', 'phi02'], axis=1, inplace=True, errors='ignore')
 
 # Признаки, которые будем логарифмировать (сильно скошенные)
 skewed_features = ['r1', 'r', 'r0', 'h', 'L']
@@ -26,41 +25,9 @@ hydro_cols = ['efficiency', 'mass_flow']
 data = df[geom_cols].values
 n_sample = 1000
 
-# некоторые дополнительные признаки для упрощения зависимости
-df['r_sum'] = df['r1'] + df['r2']
-df['r_ratio'] = df['r1'] / df['r2']
-df['h_rel'] = df['h'] / df['A']
-df['L_rel'] = df['L'] / df['A']
-df['windings'] = df['L'] / df['h']
-df['modul'] = 2 * df['A'] / (df['z1'] + df['z2'])
-
-# Линейная комбинация для КПД (пример)
-efficiency = (0.1 * df['r_ratio'] +
-              0.05 * df['h_rel'] * 10 +
-              0.02 * df['windings'] +
-              0.1 * df['modul'] / 50 +
-              0.2 * (df['z1'] / 8) +
-              0.2 * (df['z2'] / 8) +
-              0.3 * (df['A'] / 600) +
-              np.random.normal(0, 0.02, len(df)))  # шум
-
-efficiency = np.clip(efficiency, 0.5, 1.0)
-
-# Линейная комбинация для массового расхода (положительный)
-mass_flow = (0.5 * df['A'] / 100 +
-             0.3 * df['h'] / 1000 +
-             0.1 * df['L'] / 1000 +
-             0.1 * df['modul'] +
-             np.random.normal(0, 2, len(df)))
-mass_flow = np.abs(mass_flow) + 1
-
 n_samples = len(df)
 np.random.seed(42)
-# efficiency = np.random.uniform(0.5, 1.0, n_samples)   # КПД
-# mass_flow = np.random.uniform(1, 100, n_samples)      # массовый расход
-df['efficiency'] = efficiency
-df['mass_flow'] = mass_flow
-hydro_data = np.column_stack([efficiency, mass_flow])
+hydro_data = np.column_stack([df['efficiency'] , df['mass_flow']])
 
 scaler_geom = StandardScaler()
 scaler_hydro = StandardScaler()
@@ -230,7 +197,7 @@ plt.plot(sum_penalties)
 plt.title('Sum Penalty')
 
 plt.tight_layout()
-plt.show()
+# plt.show()
 
 model.eval()
 total_test_loss = 0
@@ -245,6 +212,8 @@ all_z1_pred = []
 all_z1_true = []
 all_z2_pred = []
 all_z2_true = []
+all_hydro = []
+all_hydro_true = []
 with torch.no_grad():
     for batch in test_loader:
         geom, hydro, z1t, z2t = batch
@@ -281,6 +250,8 @@ with torch.no_grad():
         all_z2_pred.extend(pred_z2)
         all_z2_true.extend(true_z2)
 
+        all_hydro.append(hydro.cpu().numpy())  # hydro — это входные гидро-данные (efficiency, mass_flow)
+
         # Выводим примеры только для первого батча
         if not examples_shown:
             # Выведем первые 5 примеров из батча
@@ -307,6 +278,11 @@ with torch.no_grad():
                     f"z1={true_z1[i].item()}, z2={true_z2[i].item()}")
 
             examples_shown = True
+
+all_hydro = np.concatenate(all_hydro, axis=0)
+all_hydro_original = scaler_hydro.inverse_transform(all_hydro)
+print("Минимальные исходные значения efficiency и mass_flow:", all_hydro_original.min(axis=0))
+
 
 avg_test_loss = total_test_loss / len(test_dataset)
 avg_mse = mse_total / len(test_dataset)
@@ -349,7 +325,7 @@ for i in range(6):
 for j in range(6, 9):
     axes[j].set_visible(False)
 plt.tight_layout()
-plt.show()
+# plt.show()
 
 print(f"\nТестовые результаты:")
 print(f"Total Loss: {avg_test_loss:.4f}")
@@ -372,6 +348,47 @@ with torch.no_grad():
         correct_z2 += (pred_z2 == z2t).sum().item()
         total += z1t.size(0)
 
+r2_pred = all_cont_pred[:, 0] - all_cont_pred[:, 1]
+
+results_df = pd.DataFrame({
+    'z1_pred': all_z1_pred,
+    'z2_pred': all_z2_pred,
+    'A_pred': all_cont_pred[:, 0],
+    'r_base_ratio': all_cont_pred[:, 2] /  all_cont_pred[:, 1],
+    'r0_ratio': all_cont_pred[:, 3] /  all_cont_pred[:, 1],
+    'h_pred': all_cont_pred[:, 4],
+    'L_pred': all_cont_pred[:, 5],
+})
+
+true_res_df = pd.DataFrame({
+    'efficiency_true': all_hydro_original[:, 0],
+    'mass_flow_true': all_hydro_original[:, 1],
+    'A_true': all_cont_true[:, 0],
+    'A_pred': all_cont_pred[:, 0],
+    'r1_true': all_cont_true[:, 1],
+    'r1_pred': all_cont_pred[:, 1],
+    'r2_true': all_cont_true[:, 0] - all_cont_true[:, 1],
+    'r2_pred': r2_pred,
+    'r_true': all_cont_true[:, 2],
+    'r_pred': all_cont_pred[:, 2],
+    'r0_true': all_cont_true[:, 3],
+    'r0_pred': all_cont_pred[:, 3],
+    'h_true': all_cont_true[:, 4],
+    'h_pred': all_cont_pred[:, 4],
+    'L_true': all_cont_true[:, 5],
+    'L_pred': all_cont_pred[:, 5],
+    'z1_true': all_z1_true,
+    'z1_pred': all_z1_pred,
+    'z2_true': all_z2_true,
+    'z2_pred': all_z2_pred
+})
+
+results_df.to_csv('test_predictions.csv', index=False)
+print("Результаты предсказаний сохранены в test_predictions.csv")
+
+true_res_df.to_csv('test_res.csv', index=False)
+print("Результаты предсказаний сохранены в test_res.csv")
+
 print(f"Accuracy z1: {correct_z1/total:.4f}")
 print(f"Accuracy z2: {correct_z2/total:.4f}")
 
@@ -383,7 +400,7 @@ plt.ylabel('Loss')
 plt.title('Training Loss')
 plt.legend()
 plt.grid(True)
-plt.show()
+# plt.show()
 
 torch.save(model.state_dict(), 'cvae_geom.pth')
 with open('scaler_geom.pkl', 'wb') as f:
