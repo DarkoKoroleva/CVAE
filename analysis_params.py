@@ -22,39 +22,10 @@ df['z2'] = df['z2'].astype(int)
 df.drop(['phi01', 'phi02'], axis=1, inplace=True, errors='ignore')
 
 geom_cols = ['A', 'r1', 'r2', 'r', 'r0', 'h', 'L', 'z1', 'z2']
-hydro_cols = ['efficiency', 'mass_flow']
+hydro_cols = ['efficiency', 'mass_flow', 'eps_theor']
 data = df[geom_cols].values
 
-# дополнительные признаки для синтетической гидродинамики
-df['r_sum'] = df['r1'] + df['r2']
-df['r_ratio'] = df['r1'] / df['r2']
-df['h_rel'] = df['h'] / df['A']
-df['L_rel'] = df['L'] / df['A']
-df['windings'] = df['L'] / df['h']
-df['modul'] = 2 * df['A'] / (df['z1'] + df['z2'])
-
-# Генерация гидродинамики (как в cvae.py)
-np.random.seed(42)
-efficiency = (0.1 * df['r_ratio'] +
-              0.05 * df['h_rel'] * 10 +
-              0.02 * df['windings'] +
-              0.1 * df['modul'] / 50 +
-              0.2 * (df['z1'] / 8) +
-              0.2 * (df['z2'] / 8) +
-              0.3 * (df['A'] / 600) +
-              np.random.normal(0, 0.02, len(df)))
-efficiency = np.clip(efficiency, 0.5, 1.0)
-
-mass_flow = (0.5 * df['A'] / 100 +
-             0.3 * df['h'] / 1000 +
-             0.1 * df['L'] / 1000 +
-             0.1 * df['modul'] +
-             np.random.normal(0, 2, len(df)))
-mass_flow = np.abs(mass_flow) + 1
-
-df['efficiency'] = efficiency
-df['mass_flow'] = mass_flow
-hydro_data = np.column_stack([efficiency, mass_flow])
+hydro_data = np.column_stack([df['efficiency'], df['mass_flow'], df['eps_theor']])
 
 scaler_geom = StandardScaler()
 scaler_hydro = StandardScaler()
