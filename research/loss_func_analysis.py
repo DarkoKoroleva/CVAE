@@ -1,3 +1,9 @@
+"""
+Перебирает параметры Loss-функции, обучая нейросеть на них.
+Выводит характеристики моделей для выбора наилучших параметров Loss-функции.
+"""
+
+
 import os
 import itertools
 import numpy as np
@@ -13,10 +19,11 @@ import matplotlib.pyplot as plt
 from sklearn.utils.class_weight import compute_class_weight
 import pickle
 
+
 # =====================================================
 # 1. Загрузка и подготовка данных (копия из cvae.py)
 # =====================================================
-df = pd.read_csv('params.csv', index_col=0)
+df = pd.read_csv('../temp/params.csv', index_col=0)
 df['z1'] = df['z1'].astype(int)
 df['z2'] = df['z2'].astype(int)
 df.drop(['phi01', 'phi02'], axis=1, inplace=True, errors='ignore')

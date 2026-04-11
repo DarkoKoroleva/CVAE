@@ -1,5 +1,9 @@
+"""
+Тренировка модели нейросети CVAE
+"""
+
+
 import torch
-import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
 import numpy as np
@@ -11,7 +15,8 @@ from cvae import ConditionalVAE, loss_function
 import matplotlib.pyplot as plt
 import pickle
 
-df = pd.read_csv('screws_dataset.csv', index_col=0)
+
+df = pd.read_csv('../dataset/screws_dataset.csv', index_col=0)
 df['z1'] = df['z1'].astype(int)
 df['z2'] = df['z2'].astype(int)
 
@@ -20,14 +25,14 @@ skewed_features = ['r1', 'r', 'r0', 'h', 'L']
 for feat in skewed_features:
     df[feat + '_log'] = np.log1p(df[feat])  # log(1+x) для положительных x
 
+df['Q_theor_log'] = np.log1p(df['Q_theor'])
+df['eps_theor_log'] = np.log1p(df['eps_theor'])
+
 geom_cols = ['A'] + [f+'_log' for f in skewed_features] + ['z1', 'z2']
-hydro_cols = ['efficiency', 'mass_flow']
-data = df[geom_cols].values
-n_sample = 1000
+hydro_cols = ['Q_theor_log', 'eps_theor_log', 'etha_theor']
 
 n_samples = len(df)
 np.random.seed(42)
-hydro_data = np.column_stack([df['efficiency'] , df['mass_flow']])
 
 scaler_geom = StandardScaler()
 scaler_hydro = StandardScaler()
@@ -85,7 +90,7 @@ test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)
 # class_weights_z2 = torch.FloatTensor(weights_z2)
 
 geom_dim = 8
-hydro_dim = 2
+hydro_dim = 3
 latent_dim = 7
 model = ConditionalVAE(geom_dim, hydro_dim, latent_dim)
 optimizer = optim.Adam(model.parameters(), lr=1e-3)
@@ -97,7 +102,6 @@ mse_losses = []
 ce_losses = []
 kl_losses = []
 neg_penalties = []
-sum_penalties = []
 
 for epoch in range(epochs):
     model.train()
@@ -106,7 +110,6 @@ for epoch in range(epochs):
     total_kl = 0
     total_ce = 0
     total_neg = 0
-    total_sum = 0
     for batch in train_loader:
         # geom, hydro, _, _ = next(iter(train_loader))
         # mean, logvar = model.encode(geom, hydro)
@@ -133,21 +136,18 @@ for epoch in range(epochs):
         total_ce += ce.item()
         total_kl += kl.item()
         total_neg += neg.item()
-        total_sum += sum_pen.item()
 
     avg_loss = total_loss / len(train_dataset)
     avg_mse = total_mse / len(train_dataset)
     avg_ce = total_ce / len(train_dataset)
     avg_kl = total_kl / len(train_dataset)
     avg_neg = total_neg / len(train_dataset)
-    avg_sum = total_sum / len(train_dataset)
 
     train_losses.append(avg_loss)
     mse_losses.append(avg_mse)
     ce_losses.append(avg_ce)
     kl_losses.append(avg_kl)
     neg_penalties.append(avg_neg)
-    sum_penalties.append(avg_sum)
 
     # Валидация
     model.eval()
@@ -170,7 +170,7 @@ for epoch in range(epochs):
     val_losses.append(avg_val_loss)
 
 
-plt.figure(figsize=(12, 8))
+plt.figure(figsize=(10,6))
 
 plt.subplot(2, 3, 1)
 plt.plot(train_losses)
@@ -191,10 +191,6 @@ plt.title('KL Divergence')
 plt.subplot(2, 3, 5)
 plt.plot(neg_penalties)
 plt.title('Negative Penalty')
-
-plt.subplot(2, 3, 6)
-plt.plot(sum_penalties)
-plt.title('Sum Penalty')
 
 plt.tight_layout()
 # plt.show()
@@ -250,7 +246,7 @@ with torch.no_grad():
         all_z2_pred.extend(pred_z2)
         all_z2_true.extend(true_z2)
 
-        all_hydro.append(hydro.cpu().numpy())  # hydro — это входные гидро-данные (efficiency, mass_flow)
+        all_hydro.append(hydro.cpu().numpy())
 
         # Выводим примеры только для первого батча
         if not examples_shown:
@@ -351,18 +347,19 @@ with torch.no_grad():
 r2_pred = all_cont_pred[:, 0] - all_cont_pred[:, 1]
 
 results_df = pd.DataFrame({
-    'z1_pred': all_z1_pred,
-    'z2_pred': all_z2_pred,
+    'z1': all_z1_pred,
+    'z2': all_z2_pred,
     'A_pred': all_cont_pred[:, 0],
     'r_base_ratio': all_cont_pred[:, 2] /  all_cont_pred[:, 1],
     'r0_ratio': all_cont_pred[:, 3] /  all_cont_pred[:, 1],
-    'h_pred': all_cont_pred[:, 4],
-    'L_pred': all_cont_pred[:, 5],
+    'h': all_cont_pred[:, 4],
+    'L': all_cont_pred[:, 5],
 })
 
 true_res_df = pd.DataFrame({
-    'efficiency_true': all_hydro_original[:, 0],
-    'mass_flow_true': all_hydro_original[:, 1],
+    'efficiency_true': all_hydro_original[:, 2],   # etha_theor (индекс 2)
+    'Q_true': np.expm1(all_hydro_original[:, 0]),  # Q_theor
+    'eps_true': np.expm1(all_hydro_original[:, 1]), # eps_theor
     'A_true': all_cont_true[:, 0],
     'A_pred': all_cont_pred[:, 0],
     'r1_true': all_cont_true[:, 1],
@@ -384,10 +381,10 @@ true_res_df = pd.DataFrame({
 })
 
 results_df.to_csv('test_predictions.csv', index=False)
-print("Результаты предсказаний сохранены в test_predictions.csv")
+print("Результаты предсказаний геометрии сохранены в test_predictions.csv")
 
 true_res_df.to_csv('test_res.csv', index=False)
-print("Результаты предсказаний сохранены в test_res.csv")
+print("Сравнительные результаты предсказаний сохранены в test_res.csv")
 
 print(f"Accuracy z1: {correct_z1/total:.4f}")
 print(f"Accuracy z2: {correct_z2/total:.4f}")
@@ -400,7 +397,7 @@ plt.ylabel('Loss')
 plt.title('Training Loss')
 plt.legend()
 plt.grid(True)
-# plt.show()
+plt.show()
 
 torch.save(model.state_dict(), 'cvae_geom.pth')
 with open('scaler_geom.pkl', 'wb') as f:

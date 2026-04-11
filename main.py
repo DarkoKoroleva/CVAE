@@ -1,3 +1,8 @@
+"""
+Точка входа: задаем желаемую гидродинамику -> получаем геометрию
+"""
+
+
 import torch
 import pickle
 import numpy as np
@@ -5,12 +10,12 @@ from cvae import ConditionalVAE
 
 
 model = ConditionalVAE(geom_dim=9, hydro_dim=2, latent_dim=8)
-model.load_state_dict(torch.load('cvae_geom.pth'))
+model.load_state_dict(torch.load('train/cvae_geom.pth'))
 model.eval()
 
-with open('scaler_geom.pkl', 'rb') as f:
+with open('train/scaler_geom.pkl', 'rb') as f:
     scaler_geom = pickle.load(f)
-with open('scaler_hydro.pkl', 'rb') as f:
+with open('train/scaler_hydro.pkl', 'rb') as f:
     scaler_hydro = pickle.load(f)
 
 # 3. Извлекаем средние и масштабы для непрерывных признаков (первые 7)

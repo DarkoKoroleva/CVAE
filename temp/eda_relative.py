@@ -7,6 +7,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
 
+
 # Загрузка нового датасета
 df = pd.read_csv('params_relative.csv', index_col=0)
 

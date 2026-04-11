@@ -1,8 +1,14 @@
+"""
+Модель нейросети CVAE
+"""
+
+
 import torch
 import torch.nn as nn
 
+
 class ConditionalVAE(nn.Module):
-    def __init__(self, geom_dim, hydro_dim, latent_dim=8, hidden_dim=128, num_classes=5):
+    def __init__(self, geom_dim, hydro_dim, latent_dim=128, hidden_dim=128, num_classes=5):
         super(ConditionalVAE, self).__init__()
         self.geom_dim = geom_dim
         self.hydro_dim = hydro_dim

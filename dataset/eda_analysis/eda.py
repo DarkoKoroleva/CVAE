@@ -1,10 +1,15 @@
+"""
+Статистический анализ (EDA) входного датасета для нейросети
+"""
+
+
 import pandas as pd
-import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 
+
 # Загрузка данных (индекс уже есть, как в прошлом скрипте)
-df = pd.read_csv('screws_dataset.csv', index_col=0)
+df = pd.read_csv('../screws_dataset.csv', index_col=0)
 
 print("Информация о данных:")
 print(df.info(), "\n")
