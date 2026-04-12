@@ -6,3 +6,8 @@ __pycache__/
 pytorch_env
 
 *.png
+*.pth
+*.pkl
+*.csv
+# Исключение для файла с датасетом
+!screws_dataset.csv
