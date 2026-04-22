@@ -14,15 +14,18 @@ class ConditionalVAE(nn.Module):
         self.hydro_dim = hydro_dim
         self.latent_dim = latent_dim
         self.num_classes = num_classes
+        self.activations = {}  # словарь для хранения активаций
 
         encoder_input_dim = geom_dim + hydro_dim
         self.encoder = nn.Sequential(
             nn.Linear(encoder_input_dim, hidden_dim),
-            nn.ReLU(),
+            nn.LeakyReLU(),
             nn.Linear(hidden_dim, hidden_dim),
-            nn.ReLU(),
+            nn.LeakyReLU(),
             nn.Linear(hidden_dim, hidden_dim),
-            nn.ReLU()
+            nn.LeakyReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.LeakyReLU()
         )
         self.mean_layer = nn.Linear(hidden_dim, latent_dim)
         self.logvar_layer = nn.Linear(hidden_dim, latent_dim)
@@ -30,11 +33,13 @@ class ConditionalVAE(nn.Module):
         decoder_input_dim = latent_dim + hydro_dim
         self.decoder_shared = nn.Sequential(
             nn.Linear(decoder_input_dim, hidden_dim),
-            nn.ReLU(),
+            nn.LeakyReLU(),
             nn.Linear(hidden_dim, hidden_dim),
-            nn.ReLU(),
+            nn.LeakyReLU(),
             nn.Linear(hidden_dim, hidden_dim),
-            nn.ReLU()
+            nn.LeakyReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.LeakyReLU()
         )
 
         # Головы
@@ -66,11 +71,22 @@ class ConditionalVAE(nn.Module):
         cont, logits_z1, logits_z2 = self.decode(z, hydro)
         return cont, logits_z1, logits_z2, mean, logvar
 
+    def register_hooks(self):
+        def hook_fn(name):
+            def hook(module, input, output):
+                self.activations[name] = output.detach()
+
+            return hook
+
+        for name, module in self.named_modules():
+            if isinstance(module, nn.ReLU) or isinstance(module, nn.LeakyReLU):
+                module.register_forward_hook(hook_fn(name))
+
 def loss_function(cont_pred, logits_z1, logits_z2,
                   cont_target, z1_target, z2_target,
                   mean, logvar,
                   cont_mean, cont_scale, weight_z1=None, weight_z2=None,
-                  beta=1.0, lambda_neg=0, lambda_sum=1, lambda_ce=0):
+                  beta=1.0, lambda_neg=0, lambda_sum=1, lambda_ce=7):
     mse = nn.functional.mse_loss(cont_pred, cont_target, reduction='sum')
     kl = -0.5 * torch.sum(1 + logvar - mean.pow(2) - logvar.exp())
 

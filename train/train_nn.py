@@ -52,11 +52,11 @@ y_train_scaled = scaler_hydro.fit_transform(y_train)
 y_val_scaled = scaler_hydro.transform(y_val)
 y_test_scaled = scaler_hydro.transform(y_test)
 
-# Сохраняем средние и масштабы для непрерывных признаков (первые 7)
+# Сохраняем средние и масштабы для непрерывных признаков (первые 6)
 cont_mean = torch.FloatTensor(scaler_geom.mean_[:6])
 cont_scale = torch.FloatTensor(scaler_geom.scale_[:6])
 
-# Целевые для классификации z1, z2 (индексы 7,8 в X)
+# Целевые для классификации z1, z2 (индексы 6,7 в X)
 z1_train = torch.LongTensor(X_train[:, 6].astype(int) - 4)
 z2_train = torch.LongTensor(X_train[:, 7].astype(int) - 4)
 z1_val = torch.LongTensor(X_val[:, 6].astype(int) - 4)
@@ -93,6 +93,7 @@ geom_dim = 8
 hydro_dim = 3
 latent_dim = 7
 model = ConditionalVAE(geom_dim, hydro_dim, latent_dim)
+model.register_hooks()
 optimizer = optim.Adam(model.parameters(), lr=1e-3)
 
 epochs = 50
@@ -102,6 +103,8 @@ mse_losses = []
 ce_losses = []
 kl_losses = []
 neg_penalties = []
+dead_counts = {}   # словарь: имя слоя -> количество мёртвых нейронов
+total_counts = {}  # общее количество нейронов в слое
 
 for epoch in range(epochs):
     model.train()
@@ -131,11 +134,27 @@ for epoch in range(epochs):
         loss.backward()
         optimizer.step()
 
+        for name, activ in model.activations.items():
+            if name not in dead_counts:
+                dead_counts[name] = torch.zeros(activ.size(1), dtype=torch.long)
+                total_counts[name] = 0
+
+            batch_dead = (activ <= 0).sum(dim=0)  # (num_features,)
+            dead_counts[name] += batch_dead.cpu()
+            total_counts[name] += activ.size(0)
+
         total_loss += loss.item()
         total_mse += mse.item()
         total_ce += ce.item()
         total_kl += kl.item()
         total_neg += neg.item()
+
+    # print(f"Epoch {epoch + 1}:")
+    # for name in dead_counts:
+    #     total_neurons = dead_counts[name].numel()
+    #     dead_ratio = (dead_counts[name] == total_counts[name]).float().mean().item() * 100
+    #     always_dead = (dead_counts[name] == total_counts[name]).sum().item()
+    #     print(f"  {name}: {always_dead}/{total_neurons} всегда мёртвы ({dead_ratio:.2f}%)")
 
     avg_loss = total_loss / len(train_dataset)
     avg_mse = total_mse / len(train_dataset)
@@ -349,7 +368,7 @@ r2_pred = all_cont_pred[:, 0] - all_cont_pred[:, 1]
 results_df = pd.DataFrame({
     'z1': all_z1_pred,
     'z2': all_z2_pred,
-    'A_pred': all_cont_pred[:, 0],
+    'A_base': all_cont_pred[:, 0],
     'r_base_ratio': all_cont_pred[:, 2] /  all_cont_pred[:, 1],
     'r0_ratio': all_cont_pred[:, 3] /  all_cont_pred[:, 1],
     'h': all_cont_pred[:, 4],
