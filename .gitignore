@@ -1,4 +1,13 @@
 .idea
+.DS_Store
+__pycache__/
+
 .venv
 pytorch_env
-.png
+
+*.png
+*.pth
+*.pkl
+*.csv
+# Исключение для файла с датасетом
+!screws_dataset.csv

@@ -189,27 +189,32 @@ for epoch in range(epochs):
     val_losses.append(avg_val_loss)
 
 
-plt.figure(figsize=(10,6))
+plt.figure(figsize=(10, 6))
 
 plt.subplot(2, 3, 1)
 plt.plot(train_losses)
 plt.title('Total Loss')
+plt.grid(True)
 
 plt.subplot(2, 3, 2)
 plt.plot(mse_losses)
 plt.title('MSE (continuous)')
+plt.grid(True)
 
 plt.subplot(2, 3, 3)
 plt.plot(ce_losses)
 plt.title('Cross-Entropy (z1+z2)')
+plt.grid(True)
 
 plt.subplot(2, 3, 4)
 plt.plot(kl_losses)
 plt.title('KL Divergence')
+plt.grid(True)
 
 plt.subplot(2, 3, 5)
 plt.plot(neg_penalties)
 plt.title('Negative Penalty')
+plt.grid(True)
 
 plt.tight_layout()
 # plt.show()
@@ -325,7 +330,7 @@ for i, name in enumerate(param_names):
     print(f"{name}: MAE = {mae_per_param[i]:.3f}, RMSE = {rmse_per_param[i]:.3f}, {name}: MAPE = {mape_per_param[i]:.2f}%")
 
 # Построение scatter plots
-fig, axes = plt.subplots(3, 3, figsize=(15, 10))
+fig, axes = plt.subplots(2, 3, figsize=(10, 6))
 axes = axes.flatten()
 for i in range(6):
     ax = axes[i]
@@ -337,8 +342,8 @@ for i in range(6):
     ax.set_ylabel(f'Predicted {param_names[i]}')
     ax.set_title(f'{param_names[i]} (MAE={mae_per_param[i]:.2f})')
     ax.grid(True, alpha=0.3)
-for j in range(6, 9):
-    axes[j].set_visible(False)
+# for j in range(6, 9):
+#     axes[j].set_visible(False)
 plt.tight_layout()
 # plt.show()
 
@@ -408,7 +413,7 @@ print("Сравнительные результаты предсказаний 
 print(f"Accuracy z1: {correct_z1/total:.4f}")
 print(f"Accuracy z2: {correct_z2/total:.4f}")
 
-plt.figure(figsize=(10,5))
+plt.figure(figsize=(10, 6))
 plt.plot(train_losses, label='Train')
 plt.plot(val_losses, label='Validation')
 plt.xlabel('Epoch')
