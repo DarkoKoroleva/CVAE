@@ -86,7 +86,7 @@ def loss_function(cont_pred, logits_z1, logits_z2,
                   cont_target, z1_target, z2_target,
                   mean, logvar,
                   cont_mean, cont_scale, weight_z1=None, weight_z2=None,
-                  beta=1.0, lambda_neg=0, lambda_sum=1, lambda_ce=7):
+                  beta=1.0, lambda_neg=0, lambda_sum=0, lambda_ce=8):
     mse = nn.functional.mse_loss(cont_pred, cont_target, reduction='sum')
     kl = -0.5 * torch.sum(1 + logvar - mean.pow(2) - logvar.exp())
 

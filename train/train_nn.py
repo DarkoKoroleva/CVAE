@@ -8,12 +8,16 @@ import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
 import numpy as np
 import pandas as pd
-from sklearn.preprocessing import StandardScaler, RobustScaler
+from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
-from sklearn.utils.class_weight import compute_class_weight
 from cvae import ConditionalVAE, loss_function
 import matplotlib.pyplot as plt
 import pickle
+import os
+import json
+
+results_dir = f"training_results"
+os.makedirs(results_dir, exist_ok=True)
 
 
 df = pd.read_csv('../dataset/screws_dataset.csv', index_col=0)
@@ -91,18 +95,16 @@ test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)
 
 geom_dim = 8
 hydro_dim = 3
-latent_dim = 7
-model = ConditionalVAE(geom_dim, hydro_dim, latent_dim)
+model = ConditionalVAE(geom_dim, hydro_dim)
 model.register_hooks()
 optimizer = optim.Adam(model.parameters(), lr=1e-3)
 
-epochs = 50
+epochs = 150
 train_losses = []
 val_losses = []
 mse_losses = []
 ce_losses = []
 kl_losses = []
-neg_penalties = []
 dead_counts = {}   # словарь: имя слоя -> количество мёртвых нейронов
 total_counts = {}  # общее количество нейронов в слое
 
@@ -112,7 +114,6 @@ for epoch in range(epochs):
     total_mse = 0
     total_kl = 0
     total_ce = 0
-    total_neg = 0
     for batch in train_loader:
         # geom, hydro, _, _ = next(iter(train_loader))
         # mean, logvar = model.encode(geom, hydro)
@@ -147,7 +148,6 @@ for epoch in range(epochs):
         total_mse += mse.item()
         total_ce += ce.item()
         total_kl += kl.item()
-        total_neg += neg.item()
 
     # print(f"Epoch {epoch + 1}:")
     # for name in dead_counts:
@@ -160,13 +160,11 @@ for epoch in range(epochs):
     avg_mse = total_mse / len(train_dataset)
     avg_ce = total_ce / len(train_dataset)
     avg_kl = total_kl / len(train_dataset)
-    avg_neg = total_neg / len(train_dataset)
 
     train_losses.append(avg_loss)
     mse_losses.append(avg_mse)
     ce_losses.append(avg_ce)
     kl_losses.append(avg_kl)
-    neg_penalties.append(avg_neg)
 
     # Валидация
     model.eval()
@@ -188,6 +186,15 @@ for epoch in range(epochs):
     avg_val_loss = total_val_loss / len(val_dataset)
     val_losses.append(avg_val_loss)
 
+history_df = pd.DataFrame({
+    'epoch': range(1, epochs+1),
+    'train_loss': train_losses,
+    'val_loss': val_losses,
+    'mse': mse_losses,
+    'ce': ce_losses,
+    'kl': kl_losses,
+})
+history_df.to_csv(os.path.join(results_dir, 'training_history.csv'), index=False)
 
 plt.figure(figsize=(10, 6))
 
@@ -211,13 +218,14 @@ plt.plot(kl_losses)
 plt.title('KL Divergence')
 plt.grid(True)
 
-plt.subplot(2, 3, 5)
-plt.plot(neg_penalties)
-plt.title('Negative Penalty')
-plt.grid(True)
+# plt.subplot(2, 3, 5)
+# plt.plot(neg_penalties)
+# plt.title('Negative Penalty')
+# plt.grid(True)
 
 plt.tight_layout()
-# plt.show()
+plt.savefig(os.path.join(results_dir, 'losses_components.png'), dpi=150)
+plt.close()
 
 model.eval()
 total_test_loss = 0
@@ -345,7 +353,8 @@ for i in range(6):
 # for j in range(6, 9):
 #     axes[j].set_visible(False)
 plt.tight_layout()
-# plt.show()
+plt.savefig(os.path.join(results_dir, 'scatter_continuous.png'), dpi=150)
+plt.close()
 
 print(f"\nТестовые результаты:")
 print(f"Total Loss: {avg_test_loss:.4f}")
@@ -369,6 +378,25 @@ with torch.no_grad():
         total += z1t.size(0)
 
 r2_pred = all_cont_pred[:, 0] - all_cont_pred[:, 1]
+
+test_metrics = {
+    'total_loss': avg_test_loss,
+    'mse': avg_mse,
+    'cross_entropy': avg_ce,
+    'accuracy_z1': correct_z1 / total,
+    'accuracy_z2': correct_z2 / total,
+    'continuous_params': {}
+}
+
+for i, name in enumerate(param_names):
+    test_metrics['continuous_params'][name] = {
+        'MAE': float(mae_per_param[i]),
+        'RMSE': float(rmse_per_param[i]),
+        'MAPE': float(mape_per_param[i])
+    }
+
+with open(os.path.join(results_dir, 'test_metrics.json'), 'w') as f:
+    json.dump(test_metrics, f, indent=4)
 
 results_df = pd.DataFrame({
     'z1': all_z1_pred,
@@ -404,12 +432,6 @@ true_res_df = pd.DataFrame({
     'z2_pred': all_z2_pred
 })
 
-results_df.to_csv('test_predictions.csv', index=False)
-print("Результаты предсказаний геометрии сохранены в test_predictions.csv")
-
-true_res_df.to_csv('test_res.csv', index=False)
-print("Сравнительные результаты предсказаний сохранены в test_res.csv")
-
 print(f"Accuracy z1: {correct_z1/total:.4f}")
 print(f"Accuracy z2: {correct_z2/total:.4f}")
 
@@ -421,10 +443,28 @@ plt.ylabel('Loss')
 plt.title('Training Loss')
 plt.legend()
 plt.grid(True)
-plt.show()
+plt.savefig(os.path.join(results_dir, 'train_val_losses.png'), dpi=150)
+plt.close()
 
-torch.save(model.state_dict(), 'cvae_geom.pth')
-with open('scaler_geom.pkl', 'wb') as f:
+config = {
+    'epochs': epochs,
+    'learning_rate': 1e-3,
+    'batch_size': 64,
+    'geom_dim': geom_dim,
+    'hydro_dim': hydro_dim,
+    'scaler_geom_mean': scaler_geom.mean_.tolist(),
+    'scaler_geom_scale': scaler_geom.scale_.tolist(),
+    'scaler_hydro_mean': scaler_hydro.mean_.tolist(),
+    'scaler_hydro_scale': scaler_hydro.scale_.tolist()
+}
+with open(os.path.join(results_dir, 'config.json'), 'w') as f:
+    json.dump(config, f, indent=4)
+
+torch.save(model.state_dict(), os.path.join(results_dir, 'cvae_geom.pth'))
+with open(os.path.join(results_dir, 'scaler_geom.pkl'), 'wb') as f:
     pickle.dump(scaler_geom, f)
-with open('scaler_hydro.pkl', 'wb') as f:
+with open(os.path.join(results_dir, 'scaler_hydro.pkl'), 'wb') as f:
     pickle.dump(scaler_hydro, f)
+
+results_df.to_csv(os.path.join(results_dir, 'test_predictions.csv'), index=False)
+true_res_df.to_csv(os.path.join(results_dir, 'test_res.csv'), index=False)
