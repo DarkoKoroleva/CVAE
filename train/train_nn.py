@@ -99,7 +99,7 @@ model = ConditionalVAE(geom_dim, hydro_dim)
 model.register_hooks()
 optimizer = optim.Adam(model.parameters(), lr=1e-3)
 
-epochs = 150
+epochs = 100
 train_losses = []
 val_losses = []
 mse_losses = []
@@ -196,26 +196,31 @@ history_df = pd.DataFrame({
 })
 history_df.to_csv(os.path.join(results_dir, 'training_history.csv'), index=False)
 
-plt.figure(figsize=(10, 6))
+# Увеличиваем ширину окна (18), так как графики стоят в один ряд
+plt.figure(figsize=(18, 4))
 
-plt.subplot(2, 3, 1)
+# 1-й график: 1 строка, 4 столбца, позиция 1
+plt.subplot(1, 4, 1)
 plt.plot(train_losses)
-plt.title('Total Loss')
+plt.title('Общая кривая обучения')
 plt.grid(True)
 
-plt.subplot(2, 3, 2)
+# 2-й график: 1 строка, 4 столбца, позиция 2
+plt.subplot(1, 4, 2)
 plt.plot(mse_losses)
-plt.title('MSE (continuous)')
+plt.title('Средняя квадратическая ошибка (MSE)')
 plt.grid(True)
 
-plt.subplot(2, 3, 3)
+# 3-й график: 1 строка, 4 столбца, позиция 3
+plt.subplot(1, 4, 3)
 plt.plot(ce_losses)
-plt.title('Cross-Entropy (z1+z2)')
+plt.title('Перекрестная энтропия')
 plt.grid(True)
 
-plt.subplot(2, 3, 4)
+# 4-й график: 1 строка, 4 столбца, позиция 4
+plt.subplot(1, 4, 4)
 plt.plot(kl_losses)
-plt.title('KL Divergence')
+plt.title('KL-дивергенция')
 plt.grid(True)
 
 # plt.subplot(2, 3, 5)
@@ -286,6 +291,11 @@ with torch.no_grad():
             n_show = min(5, len(cont_pred))
             print("\nПримеры предсказаний на тестовой выборке:")
             for i in range(n_show):
+                hydro_sample = hydro[i].cpu().numpy().reshape(1, -1)
+                hydro_denorm = scaler_hydro.inverse_transform(hydro_sample)[0]
+                print(f"  Гидродинамика (вход): Q_theor={hydro_denorm[0]:.2f}, "
+                      f"eps_theor={hydro_denorm[1]:.2f}, etha_theor={hydro_denorm[2]:.2f}")
+
                 print(f"\nПример {i + 1}:")
                 print(f"  Предсказано: A={cont_pred_denorm[i, 0].item():.2f}, "
                     f"r1={torch.expm1(cont_pred_denorm[i, 1]).item():.2f}, "
@@ -346,9 +356,9 @@ for i in range(6):
     min_val = min(all_cont_true[:, i].min(), all_cont_pred[:, i].min())
     max_val = max(all_cont_true[:, i].max(), all_cont_pred[:, i].max())
     ax.plot([min_val, max_val], [min_val, max_val], 'r--', lw=1)
-    ax.set_xlabel(f'True {param_names[i]}')
-    ax.set_ylabel(f'Predicted {param_names[i]}')
-    ax.set_title(f'{param_names[i]} (MAE={mae_per_param[i]:.2f})')
+    ax.set_xlabel(f'Истинно')
+    ax.set_ylabel(f'Предсказанно')
+    ax.set_title(f'{param_names[i]}')
     ax.grid(True, alpha=0.3)
 # for j in range(6, 9):
 #     axes[j].set_visible(False)
@@ -409,7 +419,7 @@ results_df = pd.DataFrame({
 })
 
 true_res_df = pd.DataFrame({
-    'efficiency_true': all_hydro_original[:, 2],   # etha_theor (индекс 2)
+    'etha_true': all_hydro_original[:, 2],   # etha_theor (индекс 2)
     'Q_true': np.expm1(all_hydro_original[:, 0]),  # Q_theor
     'eps_true': np.expm1(all_hydro_original[:, 1]), # eps_theor
     'A_true': all_cont_true[:, 0],
@@ -436,11 +446,11 @@ print(f"Accuracy z1: {correct_z1/total:.4f}")
 print(f"Accuracy z2: {correct_z2/total:.4f}")
 
 plt.figure(figsize=(10, 6))
-plt.plot(train_losses, label='Train')
-plt.plot(val_losses, label='Validation')
-plt.xlabel('Epoch')
-plt.ylabel('Loss')
-plt.title('Training Loss')
+plt.plot(train_losses, label='Обучающая выборка')
+plt.plot(val_losses, label='Валидационная выборка')
+plt.xlabel('Эпоха обучения')
+plt.ylabel('Значение функции потерь')
+# plt.title('Кривые обучения')
 plt.legend()
 plt.grid(True)
 plt.savefig(os.path.join(results_dir, 'train_val_losses.png'), dpi=150)
